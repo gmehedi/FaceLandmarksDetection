@@ -118,8 +118,22 @@ class FaceLandmarksDetector {
             drawFeature(medianLine, color: UIColor.gray.cgColor)
         }
 
-        if let outerLips = faceLandmarks.outerLips {
-            drawFeature(outerLips, color: UIColor.red.cgColor, close: true)
+        if let outerLips = faceLandmarks.outerLips?.normalizedPoints {
+           // drawFeature(outerLips, color: UIColor.red.cgColor, close: true)
+            
+            if let innerLeaps = faceLandmarks.innerLips?.normalizedPoints {
+                //drawFeature(outerLips, color: UIColor.red.cgColor, close: true)
+                
+                if let outerSide = self.drawOuterAreaBlackOnly(sourceImage: source, imageSize: source.size, outerNormalizedPoints: outerLips, innerNormalizedPoints: innerLeaps) {
+                    
+                    
+                }
+                
+//                if let innerSide = self.drawInnerAreaBlackOnly(imageSize: source.size, outerNormalizedPoints: outerLips, innerNormalizedPoints: innerLeaps) {
+//                    
+//                    
+//                }
+            }
         }
         if let innerLips = faceLandmarks.innerLips {
             drawFeature(innerLips, color: UIColor.red.cgColor, close: true)
@@ -136,5 +150,83 @@ class FaceLandmarksDetector {
         UIGraphicsEndImageContext()
         return coloredImg
     }
+    
+    
+    func drawInnerAreaBlackOnly(
+        imageSize: CGSize,
+        outerNormalizedPoints: [CGPoint],
+        innerNormalizedPoints: [CGPoint]
+    ) -> UIImage? {
+        // Convert normalized points to pixel coordinates
+        func denormalize(_ points: [CGPoint]) -> [CGPoint] {
+            return points.map { CGPoint(x: $0.x * imageSize.width, y: (1.0 - $0.y) * imageSize.height) }
+        }
+
+        let innerPoints = denormalize(innerNormalizedPoints)
+        
+        UIGraphicsBeginImageContextWithOptions(imageSize, false, 0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
+
+        // Clear entire context to transparent
+        ctx.clear(CGRect(origin: .zero, size: imageSize))
+
+        // Draw filled black path for inner polygon only
+        ctx.beginPath()
+        ctx.addLines(between: innerPoints)
+        ctx.closePath()
+        ctx.setFillColor(UIColor.red.cgColor)
+        ctx.fillPath()
+
+        // Export as image
+        let resultImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+
+        return resultImage
+    }
+    
+    
+    func drawOuterAreaBlackOnly(
+        sourceImage: UIImage,
+        imageSize: CGSize,
+        outerNormalizedPoints: [CGPoint],
+        innerNormalizedPoints: [CGPoint]
+    ) -> UIImage? {
+        func denormalize(_ points: [CGPoint]) -> [CGPoint] {
+            return points.map { CGPoint(x: $0.x * imageSize.width, y: (1.0 - $0.y) * imageSize.height) }
+        }
+
+        let outerPoints = denormalize(outerNormalizedPoints)
+        let innerPoints = denormalize(innerNormalizedPoints)
+
+        UIGraphicsBeginImageContextWithOptions(imageSize, false, 0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return nil }
+
+        // Flip the context vertically
+        ctx.translateBy(x: 0, y: imageSize.height)
+        ctx.scaleBy(x: 1.0, y: -1.0)
+
+        // Draw the source image (now upright)
+        ctx.draw(sourceImage.cgImage!, in: CGRect(origin: .zero, size: imageSize))
+
+        // Restore to UIKit-style coordinate system for drawing paths (flip again)
+        ctx.scaleBy(x: 1.0, y: -1.0)
+        ctx.translateBy(x: 0, y: -imageSize.height)
+
+        // Construct path using UIKit-style points (origin at top-left)
+        let path = CGMutablePath()
+        path.addLines(between: outerPoints)
+        path.closeSubpath()
+        path.addLines(between: innerPoints)
+        path.closeSubpath()
+
+        ctx.addPath(path)
+        ctx.setFillColor(UIColor.black.cgColor)
+        ctx.drawPath(using: .eoFill) // Fill with even-odd rule
+
+        let finalImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return finalImage
+    }
+
 
 }
